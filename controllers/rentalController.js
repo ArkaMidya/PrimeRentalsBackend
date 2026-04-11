@@ -1,5 +1,8 @@
 const Rental = require('../models/Rental');
 const Car = require('../models/Car');
+const User = require('../models/User');
+const sendEmail = require('../utils/sendEmail');
+const crypto = require('crypto');
 
 // @desc    Get all rentals (Admin) or user rentals (Customer)
 // @route   GET /api/rentals
@@ -44,9 +47,44 @@ const createRental = async (req, res) => {
   try {
     const car = await Car.findById(carId);
 
-    if (!car || car.status !== 'Available') {
-      return res.status(400).json({ message: 'Car is not available for rent' });
+    if (!car || car.status === 'Servicing') {
+      return res.status(400).json({ message: 'Car is under servicing and not available for rent' });
     }
+
+    const requestedCheckOut = new Date(checkOutDate);
+    if (pickupTime) {
+      const [hours, minutes] = pickupTime.split(':').map(Number);
+      requestedCheckOut.setHours(hours, minutes, 0, 0);
+    }
+    const requestedCheckIn = new Date(checkInDate);
+    // For return date, we can set it to the end of the day or just keep midnight
+    // since we only care about day-level return for now.
+    
+    const now = new Date();
+    // Allow a 10-minute grace period (buffer) to account for network latency
+    const gracePeriod = 10 * 60 * 1000;
+
+    if (requestedCheckOut < (now - gracePeriod)) {
+      return res.status(400).json({ message: 'Check-out date/time cannot be in the past.' });
+    }
+
+    if (requestedCheckIn < requestedCheckOut) {
+      return res.status(400).json({ message: 'Check-in date/time must be after or equal to the check-out date/time.' });
+    }
+
+    const activeRentals = await Rental.find({ carId, rentalStatus: 'Active' });
+    const hasOverlap = activeRentals.some(rental => {
+      const existingCheckOut = new Date(rental.checkOutDate);
+      const existingCheckIn = new Date(rental.checkInDate);
+      return requestedCheckOut < existingCheckIn && requestedCheckIn > existingCheckOut;
+    });
+
+    if (hasOverlap) {
+      return res.status(400).json({ message: 'Car is already booked for the requested dates.' });
+    }
+
+    // Generate a random bookingId
+    const bookingId = `ORD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 
     const rental = new Rental({
       carId,
@@ -58,14 +96,53 @@ const createRental = async (req, res) => {
       destinationLocation,
       totalCost,
       paymentMethod,
-      pickupTime
+      pickupTime,
+      bookingId
     });
 
     const createdRental = await rental.save();
     
-    // Update car status
-    car.status = 'Rented';
+    // Increment rentalCount on the car
+    car.rentalCount = (car.rentalCount || 0) + 1;
     await car.save();
+
+    // Send confirmation email
+    try {
+      const user = await User.findById(req.user._id);
+      if (user) {
+        const emailMessage = `Dear ${user.name},
+
+Thank you for choosing our car rental service!
+
+🎉 Your booking has been successfully confirmed.
+
+📌 Order Details:
+Order ID: ${bookingId}
+Booking Date: ${new Date().toLocaleDateString()}
+Payment Status: Paid (${paymentMethod})
+
+🚗 Car Details:
+Car: ${car.make} ${car.model}
+Type: ${car.engineDetails?.type || 'N/A'}
+
+📅 Rental Details:
+Pickup: ${new Date(checkOutDate).toLocaleDateString()} at ${pickupTime}
+Drop-off: ${new Date(checkInDate).toLocaleDateString()} at 10:00 AM (Estimated)
+Location: ${sourceLocation} to ${destinationLocation}
+
+💳 Payment Summary:
+Total Amount Paid: ₹${totalCost}
+`;
+        await sendEmail({
+          email: user.email,
+          subject: `Booking Confirmed – Order #${bookingId}`,
+          message: emailMessage,
+        });
+      }
+    } catch (emailError) {
+      console.error('Error sending confirmation email:', emailError.message);
+      // We don't want to fail the rental creation if email fails
+    }
 
     res.status(201).json(createdRental);
   } catch (error) {
@@ -87,16 +164,15 @@ const updateRental = async (req, res) => {
     Object.assign(rental, req.body);
     const updatedRental = await rental.save();
 
-    // If marked completed, update car status to Available
+    // If marked completed, update mileage if provided
     if (req.body.rentalStatus === 'Completed') {
       const car = await Car.findById(rental.carId);
       if (car) {
-        car.status = 'Available';
         // Optionally update mileage if provided
         if (req.body.totalMileage) {
           car.mileage += req.body.totalMileage;
+          await car.save();
         }
-        await car.save();
       }
     }
 

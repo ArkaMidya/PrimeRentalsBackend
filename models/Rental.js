@@ -17,7 +17,8 @@ const rentalSchema = new mongoose.Schema({
   totalMileage: { type: Number, default: 0 },
   carName: { type: String },
   paymentMethod: { type: String },
-  pickupTime: { type: String }
+  pickupTime: { type: String },
+  bookingId: { type: String, unique: true }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Rental', rentalSchema);

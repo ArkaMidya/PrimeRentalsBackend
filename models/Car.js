@@ -31,7 +31,9 @@ const carSchema = new mongoose.Schema({
     description: { type: String, required: true },
     cost: { type: Number, required: true },
     serviceCenter: { type: String, required: true }
-  }]
+  }],
+  rentalCount: { type: Number, default: 0 },
+  lastServiceDate: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Car', carSchema);
