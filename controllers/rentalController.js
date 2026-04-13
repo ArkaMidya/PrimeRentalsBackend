@@ -182,9 +182,117 @@ const updateRental = async (req, res) => {
   }
 };
 
+// @desc    Cancel booking
+// @route   POST /api/rentals/cancel-booking/:bookingId
+// @access  Private
+const cancelBooking = async (req, res) => {
+  try {
+    const rental = await Rental.findOne({ bookingId: req.params.bookingId });
+
+    if (!rental) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Check if user is authorized to cancel this booking
+    if (req.user.role !== 'Admin' && rental.userId.toString() !== req.user._id.toString()) {
+      return res.status(401).json({ message: 'Not authorized to cancel this booking' });
+    }
+
+    if (rental.rentalStatus !== 'Active') {
+      return res.status(400).json({ message: `Cannot cancel a booking that is ${rental.rentalStatus}` });
+    }
+
+    // Combine checkOutDate and pickupTime for accuracy
+    const pickupDate = new Date(rental.checkOutDate);
+    if (rental.pickupTime) {
+      const [hours, minutes] = rental.pickupTime.split(':').map(Number);
+      pickupDate.setHours(hours, minutes, 0, 0);
+    }
+
+    const now = new Date();
+    const timeDiffMs = pickupDate - now;
+    const timeDiffHours = timeDiffMs / (1000 * 60 * 60);
+
+    if (timeDiffHours < 0) {
+      return res.status(400).json({ message: 'Cannot cancel a booking that has already passed its pickup time.' });
+    }
+
+    let refundAmount = 0;
+    let status = '';
+    let message = '';
+
+    if (timeDiffHours >= 24) {
+      refundAmount = Number((rental.totalCost * 0.85).toFixed(2));
+      status = 'CANCELLED_WITH_REFUND';
+      message = 'Booking cancelled. 85% refund applicable (15% deduction).';
+    } else {
+      refundAmount = 0;
+      status = 'CANCELLED_NO_REFUND';
+      message = 'Booking cancelled. No refund applicable as cancellation is within 24 hours of pickup.';
+    }
+
+    rental.rentalStatus = status;
+    rental.refundAmount = refundAmount;
+    rental.cancellationTime = now;
+    await rental.save();
+
+    res.json({
+      status,
+      refundAmount,
+      message
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get rental by Booking ID
+// @route   GET /api/rentals/booking/:bookingId
+// @access  Private/Admin
+const getRentalByBookingId = async (req, res) => {
+  try {
+    const rental = await Rental.findOne({ bookingId: req.params.bookingId }).populate('carId').populate('userId', 'name email');
+    
+    if (!rental) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+    
+    res.json(rental);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Process refund
+// @route   POST /api/rentals/refund/:bookingId
+// @access  Private/Admin
+const processRefund = async (req, res) => {
+  try {
+    const rental = await Rental.findOne({ bookingId: req.params.bookingId });
+
+    if (!rental) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    if (rental.rentalStatus !== 'CANCELLED_WITH_REFUND') {
+      return res.status(400).json({ message: `Cannot refund a booking with status ${rental.rentalStatus}` });
+    }
+
+    rental.rentalStatus = 'Refunded';
+    await rental.save();
+
+    res.json({ message: 'Refund processed successfully', rentalStatus: 'Refunded' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getRentals,
   getRentalById,
+  getRentalByBookingId,
   createRental,
-  updateRental
+  updateRental,
+  cancelBooking,
+  processRefund
 };

@@ -11,14 +11,16 @@ const rentalSchema = new mongoose.Schema({
   actualReturnDate: { type: Date },
   rentalStatus: {
     type: String,
-    enum: ['Active', 'Completed', 'Cancelled'],
+    enum: ['Active', 'Completed', 'Cancelled', 'CANCELLED_WITH_REFUND', 'CANCELLED_NO_REFUND', 'Refunded'],
     default: 'Active'
   },
   totalMileage: { type: Number, default: 0 },
   carName: { type: String },
   paymentMethod: { type: String },
   pickupTime: { type: String },
-  bookingId: { type: String, unique: true }
+  bookingId: { type: String, unique: true },
+  refundAmount: { type: Number, default: 0 },
+  cancellationTime: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Rental', rentalSchema);

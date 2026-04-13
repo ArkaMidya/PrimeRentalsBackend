@@ -5,6 +5,7 @@ const carSchema = new mongoose.Schema({
   model: { type: String, required: true },
   year: { type: Number, required: true },
   description: { type: String },
+  rentPerDay: { type: Number, required: true, default: 0 },
   mileage: { type: Number, default: 0 },
   engineDetails: {
     type: { type: String },

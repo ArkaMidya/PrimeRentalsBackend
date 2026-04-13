@@ -5,7 +5,7 @@ const Rental = require('../models/Rental');
 // @route   GET /api/cars
 // @access  Public
 const getCars = async (req, res) => {
-  const { search, mileageRange, maintenance, usage } = req.query;
+  const { search, mileageRange, maintenance, usage, rentRange } = req.query;
   let conditions = [];
 
   // Search Filter (Make/Model Keyword Search)
@@ -56,6 +56,13 @@ const getCars = async (req, res) => {
     if (usage === 'low') conditions.push({ rentalCount: { $gte: 0, $lte: 5 } });
     else if (usage === 'medium') conditions.push({ rentalCount: { $gt: 5, $lte: 15 } });
     else if (usage === 'high') conditions.push({ rentalCount: { $gt: 15 } });
+  }
+
+  // Rent Range Filter
+  if (rentRange) {
+    if (rentRange === 'low') conditions.push({ rentPerDay: { $lt: 2000 } });
+    else if (rentRange === 'medium') conditions.push({ rentPerDay: { $gte: 2000, $lte: 3000 } });
+    else if (rentRange === 'high') conditions.push({ rentPerDay: { $gt: 3000 } });
   }
 
   const query = conditions.length > 0 ? { $and: conditions } : {};
