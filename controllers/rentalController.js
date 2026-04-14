@@ -42,7 +42,7 @@ const getRentalById = async (req, res) => {
 // @route   POST /api/rentals
 // @access  Private
 const createRental = async (req, res) => {
-  const { carId, checkOutDate, checkInDate, sourceLocation, destinationLocation, totalCost, paymentMethod, pickupTime } = req.body;
+  const { carId, checkOutDate, checkInDate, sourceLocation, destinationLocation, totalCost, paymentMethod, pickupTime, phone } = req.body;
 
   try {
     const car = await Car.findById(carId);
@@ -97,6 +97,8 @@ const createRental = async (req, res) => {
       totalCost,
       paymentMethod,
       pickupTime,
+      pickupLocation: sourceLocation,
+      phone,
       bookingId
     });
 
@@ -120,15 +122,16 @@ Thank you for choosing our car rental service!
 Order ID: ${bookingId}
 Booking Date: ${new Date().toLocaleDateString()}
 Payment Status: Paid (${paymentMethod})
+Contact Phone: ${phone || 'N/A'}
 
 🚗 Car Details:
 Car: ${car.make} ${car.model}
 Type: ${car.engineDetails?.type || 'N/A'}
 
 📅 Rental Details:
-Pickup: ${new Date(checkOutDate).toLocaleDateString()} at ${pickupTime}
+Pickup Point: ${sourceLocation}
 Drop-off: ${new Date(checkInDate).toLocaleDateString()} at 10:00 AM (Estimated)
-Location: ${sourceLocation} to ${destinationLocation}
+Routing: ${sourceLocation} to ${destinationLocation}
 
 💳 Payment Summary:
 Total Amount Paid: ₹${totalCost}

@@ -18,6 +18,8 @@ const rentalSchema = new mongoose.Schema({
   carName: { type: String },
   paymentMethod: { type: String },
   pickupTime: { type: String },
+  pickupLocation: { type: String },
+  phone: { type: String },
   bookingId: { type: String, unique: true },
   refundAmount: { type: Number, default: 0 },
   cancellationTime: { type: Date }
