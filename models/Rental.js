@@ -11,9 +11,17 @@ const rentalSchema = new mongoose.Schema({
   actualReturnDate: { type: Date },
   rentalStatus: {
     type: String,
-    enum: ['Active', 'Completed', 'Cancelled', 'CANCELLED_WITH_REFUND', 'CANCELLED_NO_REFUND', 'Refunded'],
-    default: 'Active'
+    enum: ['Pending', 'Confirmed', 'Active', 'Completed', 'Cancelled', 'CANCELLED_WITH_REFUND', 'CANCELLED_NO_REFUND', 'Refunded', 'Failed'],
+    default: 'Pending'
   },
+  paymentStatus: {
+    type: String,
+    enum: ['Pending', 'Paid', 'Failed'],
+    default: 'Pending'
+  },
+  razorpayOrderId: { type: String },
+  razorpayPaymentId: { type: String },
+  razorpaySignature: { type: String },
   totalMileage: { type: Number, default: 0 },
   carName: { type: String },
   paymentMethod: { type: String },
@@ -22,7 +30,8 @@ const rentalSchema = new mongoose.Schema({
   phone: { type: String },
   bookingId: { type: String, unique: true },
   refundAmount: { type: Number, default: 0 },
-  cancellationTime: { type: Date }
+  cancellationTime: { type: Date },
+  razorpayRefundId: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Rental', rentalSchema);

@@ -3,6 +3,12 @@ const Car = require('../models/Car');
 const User = require('../models/User');
 const sendEmail = require('../utils/sendEmail');
 const crypto = require('crypto');
+const Razorpay = require('razorpay');
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
+});
 
 // @desc    Get all rentals (Admin) or user rentals (Customer)
 // @route   GET /api/rentals
@@ -51,28 +57,40 @@ const createRental = async (req, res) => {
       return res.status(400).json({ message: 'Car is under servicing and not available for rent' });
     }
 
-    const requestedCheckOut = new Date(checkOutDate);
-    if (pickupTime) {
-      const [hours, minutes] = pickupTime.split(':').map(Number);
-      requestedCheckOut.setHours(hours, minutes, 0, 0);
+    const { startEpoch, endEpoch } = req.body;
+    let requestedCheckOut, requestedCheckIn;
+
+    if (startEpoch && endEpoch) {
+      requestedCheckOut = new Date(startEpoch);
+      requestedCheckIn = new Date(endEpoch);
+    } else {
+      // Fallback to string parsing if timestamps not provided
+      const [coYear, coMonth, coDay] = checkOutDate.split('-').map(Number);
+      requestedCheckOut = new Date(coYear, coMonth - 1, coDay);
+      if (pickupTime) {
+        const [hours, minutes] = pickupTime.split(':').map(Number);
+        requestedCheckOut.setHours(hours, minutes, 0, 0);
+      }
+      requestedCheckIn = new Date(checkInDate);
+      requestedCheckIn.setHours(23, 59, 59, 999);
     }
-    const requestedCheckIn = new Date(checkInDate);
-    // For return date, we can set it to the end of the day or just keep midnight
-    // since we only care about day-level return for now.
     
     const now = new Date();
-    // Allow a 10-minute grace period (buffer) to account for network latency
-    const gracePeriod = 10 * 60 * 1000;
+    // Minimum 1 hour lead time for pick-up
+    const minimumLeadTime = 60 * 1000 * 60;
 
-    if (requestedCheckOut < (now - gracePeriod)) {
-      return res.status(400).json({ message: 'Check-out date/time cannot be in the past.' });
+    if (requestedCheckOut < (now + minimumLeadTime)) {
+      return res.status(400).json({ message: 'Pick-up time must be at least 1 hour from now.' });
     }
 
     if (requestedCheckIn < requestedCheckOut) {
       return res.status(400).json({ message: 'Check-in date/time must be after or equal to the check-out date/time.' });
     }
 
-    const activeRentals = await Rental.find({ carId, rentalStatus: 'Active' });
+    const activeRentals = await Rental.find({ 
+      carId, 
+      rentalStatus: { $in: ['Active', 'Confirmed', 'Pending'] } 
+    });
     const hasOverlap = activeRentals.some(rental => {
       const existingCheckOut = new Date(rental.checkOutDate);
       const existingCheckIn = new Date(rental.checkInDate);
@@ -80,7 +98,7 @@ const createRental = async (req, res) => {
     });
 
     if (hasOverlap) {
-      return res.status(400).json({ message: 'Car is already booked for the requested dates.' });
+      return res.status(400).json({ message: 'Car is already booked or has a pending booking for the requested dates.' });
     }
 
     // Generate a random bookingId
@@ -99,7 +117,9 @@ const createRental = async (req, res) => {
       pickupTime,
       pickupLocation: sourceLocation,
       phone,
-      bookingId
+      bookingId,
+      rentalStatus: 'Pending',
+      paymentStatus: 'Pending'
     });
 
     const createdRental = await rental.save();
@@ -107,45 +127,6 @@ const createRental = async (req, res) => {
     // Increment rentalCount on the car
     car.rentalCount = (car.rentalCount || 0) + 1;
     await car.save();
-
-    // Send confirmation email
-    try {
-      const user = await User.findById(req.user._id);
-      if (user) {
-        const emailMessage = `Dear ${user.name},
-
-Thank you for choosing our car rental service!
-
-🎉 Your booking has been successfully confirmed.
-
-📌 Order Details:
-Order ID: ${bookingId}
-Booking Date: ${new Date().toLocaleDateString()}
-Payment Status: Paid (${paymentMethod})
-Contact Phone: ${phone || 'N/A'}
-
-🚗 Car Details:
-Car: ${car.make} ${car.model}
-Type: ${car.engineDetails?.type || 'N/A'}
-
-📅 Rental Details:
-Pickup Point: ${sourceLocation}
-Drop-off: ${new Date(checkInDate).toLocaleDateString()} at 10:00 AM (Estimated)
-Routing: ${sourceLocation} to ${destinationLocation}
-
-💳 Payment Summary:
-Total Amount Paid: ₹${totalCost}
-`;
-        await sendEmail({
-          email: user.email,
-          subject: `Booking Confirmed – Order #${bookingId}`,
-          message: emailMessage,
-        });
-      }
-    } catch (emailError) {
-      console.error('Error sending confirmation email:', emailError.message);
-      // We don't want to fail the rental creation if email fails
-    }
 
     res.status(201).json(createdRental);
   } catch (error) {
@@ -201,12 +182,14 @@ const cancelBooking = async (req, res) => {
       return res.status(401).json({ message: 'Not authorized to cancel this booking' });
     }
 
-    if (rental.rentalStatus !== 'Active') {
+    if (rental.rentalStatus !== 'Confirmed' && rental.rentalStatus !== 'Active') {
       return res.status(400).json({ message: `Cannot cancel a booking that is ${rental.rentalStatus}` });
     }
 
     // Combine checkOutDate and pickupTime for accuracy
-    const pickupDate = new Date(rental.checkOutDate);
+    const [coYear, coMonth, coDay] = rental.checkOutDate.toISOString().split('T')[0].split('-').map(Number);
+    const pickupDate = new Date(coYear, coMonth - 1, coDay);
+    
     if (rental.pickupTime) {
       const [hours, minutes] = rental.pickupTime.split(':').map(Number);
       pickupDate.setHours(hours, minutes, 0, 0);
@@ -216,7 +199,7 @@ const cancelBooking = async (req, res) => {
     const timeDiffMs = pickupDate - now;
     const timeDiffHours = timeDiffMs / (1000 * 60 * 60);
 
-    if (timeDiffHours < 0) {
+    if (timeDiffHours < 0 && rental.rentalStatus === 'Confirmed') {
       return res.status(400).json({ message: 'Cannot cancel a booking that has already passed its pickup time.' });
     }
 
@@ -281,10 +264,63 @@ const processRefund = async (req, res) => {
       return res.status(400).json({ message: `Cannot refund a booking with status ${rental.rentalStatus}` });
     }
 
-    rental.rentalStatus = 'Refunded';
+    if (!rental.razorpayPaymentId) {
+      return res.status(400).json({ message: 'No Razorpay payment ID found for this booking. Manual refund required.' });
+    }
+
+    // Process the refund via Razorpay
+    try {
+      const refundAmountInPaise = Math.round(rental.refundAmount * 100);
+      const refund = await razorpay.payments.refund(rental.razorpayPaymentId, {
+        amount: refundAmountInPaise,
+        notes: {
+          reason: 'Customer requested cancellation (85% refund)',
+          bookingId: rental.bookingId
+        }
+      });
+
+      rental.rentalStatus = 'Refunded';
+      rental.razorpayRefundId = refund.id; // Store refund ID if needed
+      await rental.save();
+
+      res.json({ 
+        message: 'Refund processed successfully via Razorpay', 
+        refundId: refund.id,
+        rentalStatus: 'Refunded' 
+      });
+    } catch (rzpError) {
+      console.error('Razorpay Refund Error:', rzpError);
+      res.status(500).json({ 
+        message: 'Error processing refund with Razorpay', 
+        error: rzpError.description || rzpError.message 
+      });
+    }
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Cancel a pending rental (payment dismissed or failed)
+// @route   POST /api/rentals/cancel-pending/:id
+// @access  Private
+const cancelPendingRental = async (req, res) => {
+  try {
+    const rental = await Rental.findById(req.params.id);
+
+    if (!rental) {
+      return res.status(404).json({ message: 'Rental not found' });
+    }
+
+    // Only allow cancelling if it's still Pending
+    if (rental.rentalStatus !== 'Pending') {
+      return res.status(400).json({ message: `Cannot cancel a rental with status ${rental.rentalStatus}` });
+    }
+
+    rental.rentalStatus = 'Cancelled';
     await rental.save();
 
-    res.json({ message: 'Refund processed successfully', rentalStatus: 'Refunded' });
+    res.json({ message: 'Pending rental cancelled successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -297,5 +333,6 @@ module.exports = {
   createRental,
   updateRental,
   cancelBooking,
-  processRefund
+  processRefund,
+  cancelPendingRental
 };

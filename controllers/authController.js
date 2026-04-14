@@ -5,7 +5,7 @@ const sendEmail = require('../utils/sendEmail');
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '30d',
+    expiresIn: '1d',
   });
 };
 
@@ -19,7 +19,7 @@ const sendRegisterOtp = async (req, res) => {
     if (userExists) return res.status(400).json({ message: 'User already exists' });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     // Clear any previous OTPs for this email to avoid duplicates
     await OTP.deleteMany({ email });
     await OTP.create({ email, otp });
@@ -111,7 +111,7 @@ const sendForgotPasswordOtp = async (req, res) => {
     if (!userExists) return res.status(404).json({ message: 'User not found' });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     await OTP.deleteMany({ email });
     await OTP.create({ email, otp });
 
@@ -132,7 +132,7 @@ const sendForgotPasswordOtp = async (req, res) => {
 // @access  Public
 const resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
-  
+
   try {
     if (!otp) return res.status(400).json({ message: 'OTP is required' });
 

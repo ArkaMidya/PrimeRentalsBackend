@@ -5,7 +5,7 @@ const paymentSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   paymentMode: {
     type: String,
-    enum: ['Cash', 'Credit Card', 'Debit Card', 'Online'],
+    enum: ['Cash', 'Credit Card', 'Debit Card', 'Online', 'Net Banking', 'UPI', 'Wallet', 'EMI', 'Pay Later'],
     required: true
   },
   transactionDate: { type: Date, default: Date.now },

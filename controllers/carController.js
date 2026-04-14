@@ -208,7 +208,7 @@ const getCarBookedDates = async (req, res) => {
   try {
     const activeRentals = await Rental.find({
       carId: req.params.id,
-      rentalStatus: 'Active'
+      rentalStatus: { $in: ['Active', 'Confirmed', 'Pending'] }
     });
 
     const bookedDates = activeRentals.map(rental => ({
@@ -227,7 +227,9 @@ const getCarBookedDates = async (req, res) => {
 // @access  Public
 const getAllCarsBookedDates = async (req, res) => {
   try {
-    const activeRentals = await Rental.find({ rentalStatus: 'Active' });
+    const activeRentals = await Rental.find({ 
+      rentalStatus: { $in: ['Active', 'Confirmed', 'Pending'] } 
+    });
     const bookedDatesByCar = {};
     activeRentals.forEach(rental => {
       if (!bookedDatesByCar[rental.carId]) {
