@@ -8,6 +8,7 @@ const rentalSchema = new mongoose.Schema({
   sourceLocation: { type: String, required: true },
   destinationLocation: { type: String, required: true },
   totalCost: { type: Number },
+  tripDistanceKm: { type: Number, default: 0 },
   actualReturnDate: { type: Date },
   rentalStatus: {
     type: String,

@@ -48,7 +48,7 @@ const getRentalById = async (req, res) => {
 // @route   POST /api/rentals
 // @access  Private
 const createRental = async (req, res) => {
-  const { carId, checkOutDate, checkInDate, sourceLocation, destinationLocation, totalCost, paymentMethod, pickupTime, phone } = req.body;
+  const { carId, checkOutDate, checkInDate, sourceLocation, destinationLocation, totalCost, paymentMethod, pickupTime, phone, tripDistanceKm } = req.body;
 
   try {
     const car = await Car.findById(carId);
@@ -117,6 +117,7 @@ const createRental = async (req, res) => {
       pickupTime,
       pickupLocation: sourceLocation,
       phone,
+      tripDistanceKm: tripDistanceKm || 0,
       bookingId,
       rentalStatus: 'Pending',
       paymentStatus: 'Pending'
