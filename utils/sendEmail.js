@@ -29,6 +29,7 @@ const sendEmail = async (options) => {
       text: options.message,
     };
 
+    console.log("DEBUG: Forcing IPv4 Connection for Gmail...");
     console.log(`Attempting to send email to: ${options.email}...`);
     const info = await transporter.sendMail(mailOptions);
     console.log(`Email sent successfully: ${info.messageId}`);
