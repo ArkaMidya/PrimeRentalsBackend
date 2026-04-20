@@ -1,36 +1,42 @@
 const sendEmail = async (options) => {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.EMAIL_USER; // Use the verified email as sender
 
   if (!apiKey) {
-    console.error('CRITICAL ERROR: RESEND_API_KEY environment variable is missing!');
+    console.error('CRITICAL ERROR: BREVO_API_KEY environment variable is missing!');
     throw new Error('Email service is not configured on the server.');
   }
 
   try {
-    console.log(`DEBUG: Sending email via Resend API to: ${options.email}...`);
+    console.log(`DEBUG: Sending email via Brevo API to: ${options.email}...`);
 
-    const response = await fetch('https://api.resend.com/emails', {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'api-key': apiKey,
       },
       body: JSON.stringify({
-        from: 'Car Rental <onboarding@resend.dev>',
-        to: options.email,
+        sender: { 
+          name: 'Car Rental App', 
+          email: senderEmail 
+        },
+        to: [{ 
+          email: options.email 
+        }],
         subject: options.subject,
-        text: options.message,
+        textContent: options.message,
       }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('Resend API Error:', data);
-      throw new Error(data.message || 'Failed to send email via Resend');
+      console.error('Brevo API Error:', data);
+      throw new Error(data.message || 'Failed to send email via Brevo');
     }
 
-    console.log(`Email sent successfully via Resend. ID: ${data.id}`);
+    console.log(`Email sent successfully via Brevo. Message ID: ${data.messageId}`);
     return data;
   } catch (error) {
     console.error('Error sending email:', error.message);
