@@ -1,46 +1,39 @@
-const nodemailer = require('nodemailer');
-
 const sendEmail = async (options) => {
-  // Check if environment variables are set
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.error('CRITICAL ERROR: EMAIL_USER or EMAIL_PASS environment variables are missing!');
-    throw new Error('Email credentials are not configured on the server.');
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    console.error('CRITICAL ERROR: RESEND_API_KEY environment variable is missing!');
+    throw new Error('Email service is not configured on the server.');
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // Use STARTTLS for port 587
-      family: 4,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+    console.log(`DEBUG: Sending email via Resend API to: ${options.email}...`);
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
-      tls: {
-        rejectUnauthorized: false
-      },
-      debug: true, // Show detailed logs
-      logger: true // Enable logging to console
+      body: JSON.stringify({
+        from: 'Car Rental <onboarding@resend.dev>',
+        to: options.email,
+        subject: options.subject,
+        text: options.message,
+      }),
     });
 
-    const mailOptions = {
-      from: `"Car Rental App" <${process.env.EMAIL_USER}>`,
-      to: options.email,
-      subject: options.subject,
-      text: options.message,
-    };
+    const data = await response.json();
 
-    console.log("DEBUG: Forcing IPv4 Connection for Gmail...");
-    console.log(`Attempting to send email to: ${options.email}...`);
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`Email sent successfully: ${info.messageId}`);
-    return info;
+    if (!response.ok) {
+      console.error('Resend API Error:', data);
+      throw new Error(data.message || 'Failed to send email via Resend');
+    }
+
+    console.log(`Email sent successfully via Resend. ID: ${data.id}`);
+    return data;
   } catch (error) {
     console.error('Error sending email:', error.message);
-    if (error.code === 'EAUTH') {
-      console.error('Authentication failed. Check if EMAIL_PASS is a valid App Password and EMAIL_USER is correct.');
-    }
     throw new Error('Email could not be sent: ' + error.message);
   }
 };
