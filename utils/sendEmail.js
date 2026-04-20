@@ -12,6 +12,7 @@ const sendEmail = async (options) => {
       host: 'smtp.gmail.com',
       port: 465,
       secure: true, // TLS/SSL
+      family: 4, // Force IPv4 to avoid ENETUNREACH issues on cloud servers
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
